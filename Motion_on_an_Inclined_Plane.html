@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>模擬授業用：斜面上の運動シミュレーション</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            background-color: #f3f4f6; /* Gray-100 */
+        }
+        canvas {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border-radius: 0.5rem;
+            background-color: #ffffff;
+        }
+        /* Custom scrollbar for the table */
+        .table-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        .table-container::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+            border-radius: 4px;
+        }
+        .table-container::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 4px;
+        }
+        .table-container::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8 flex flex-col items-center">
+
+    <div class="max-w-6xl w-full">
+        
+        <header class="mb-6 text-center md:text-left">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-2">斜面上の運動シミュレーション</h1>
+            <p class="text-gray-600 text-lg">初速度と斜面の角度を設定し、1秒ごとの速度の変化から加速度を求める実験の代替ツールです。</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Left Column: Simulation Canvas -->
+            <div class="lg:col-span-2 space-y-4">
+                <div class="relative w-full overflow-hidden bg-white rounded-lg shadow">
+                    <!-- Canvas wrapper to maintain aspect ratio 800x500 -->
+                    <div style="padding-top: 62.5%; position: relative;"> 
+                        <canvas id="simCanvas" width="800" height="500" class="absolute top-0 left-0 w-full h-full"></canvas>
+                    </div>
+                    
+                    <!-- Overlaid Live HUD -->
+                    <div class="absolute top-4 right-4 bg-white/90 backdrop-blur px-4 py-2 rounded-lg shadow border border-gray-200">
+                        <div class="text-sm text-gray-500 font-semibold mb-1">リアルタイムデータ</div>
+                        <div class="text-xl font-mono text-gray-800">t = <span id="hudTime">0.00</span> s</div>
+                        <div class="text-xl font-mono text-gray-800">v = <span id="hudVel">0.00</span> m/s</div>
+                        <div class="text-xl font-mono text-gray-800">x = <span id="hudDist">0.00</span> m</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Controls and Data Table -->
+            <div class="flex flex-col space-y-6">
+                
+                <!-- Controls Panel -->
+                <div class="bg-white p-6 rounded-lg shadow border-t-4 border-blue-500">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                        <svg class="w-6 h-6 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                        設定
+                    </h2>
+                    
+                    <!-- Initial Velocity Control -->
+                    <div class="mb-5">
+                        <div class="flex justify-between items-center mb-1">
+                            <label for="v0Slider" class="text-gray-700 font-semibold text-lg">初速度 (v₀)</label>
+                            <span class="text-blue-600 font-mono font-bold text-xl"><span id="v0Display">0.0</span> m/s</span>
+                        </div>
+                        <input type="range" id="v0Slider" min="0" max="10" step="0.5" value="0" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+                    </div>
+
+                    <!-- Angle Control -->
+                    <div class="mb-6">
+                        <div class="flex justify-between items-center mb-1">
+                            <label for="angleSlider" class="text-gray-700 font-semibold text-lg">斜面の角度 (θ)</label>
+                            <span class="text-blue-600 font-mono font-bold text-xl"><span id="angleDisplay">30</span>°</span>
+                        </div>
+                        <input type="range" id="angleSlider" min="5" max="40" step="1" value="30" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="flex gap-3">
+                        <button id="startBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow transition-colors duration-200 text-lg">
+                            スタート
+                        </button>
+                        <button id="resetBtn" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 px-4 rounded-lg shadow transition-colors duration-200 text-lg">
+                            リセット
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Data Table Panel -->
+                <div class="bg-white rounded-lg shadow flex-1 flex flex-col border-t-4 border-green-500 overflow-hidden">
+                    <div class="p-4 bg-gray-50 border-b border-gray-200">
+                        <h2 class="text-xl font-bold text-gray-800 flex items-center">
+                            <svg class="w-6 h-6 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                            測定データ
+                        </h2>
+                        <p class="text-sm text-gray-500 mt-1">1秒ごとの速度を自動記録します。</p>
+                    </div>
+                    
+                    <!-- Table Body -->
+                    <div class="table-container flex-1 overflow-y-auto p-0 max-h-[300px] lg:max-h-full">
+                        <table class="w-full text-left border-collapse">
+                            <thead class="bg-white sticky top-0 shadow-sm">
+                                <tr>
+                                    <th class="py-3 px-4 border-b-2 border-gray-200 text-gray-600 font-bold">時間 t [s]</th>
+                                    <th class="py-3 px-4 border-b-2 border-gray-200 text-gray-600 font-bold">速度 v [m/s]</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dataTableBody" class="font-mono text-lg text-gray-800">
+                                <!-- Data rows will be inserted here dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const v0Slider = document.getElementById('v0Slider');
+        const v0Display = document.getElementById('v0Display');
+        const angleSlider = document.getElementById('angleSlider');
+        const angleDisplay = document.getElementById('angleDisplay');
+        
+        const startBtn = document.getElementById('startBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        
+        const dataTableBody = document.getElementById('dataTableBody');
+        
+        const hudTime = document.getElementById('hudTime');
+        const hudVel = document.getElementById('hudVel');
+        const hudDist = document.getElementById('hudDist');
+
+        // Simulation State
+        const physics = {
+            g: 9.8,        // 重力加速度 [m/s^2]
+            v0: 0,         // 初速度 [m/s]
+            angleDeg: 30,  // 角度 [deg]
+            time: 0,       // 経過時間 [s]
+            isRunning: false,
+            scale: 10,     // 描画スケール: 1m = 10px
+            maxDistance: 70, // 斜面の最大長 [m] (描画用)
+            lastTimestamp: 0,
+            nextRecordTime: 0 // 次に記録する時間(整数秒)
+        };
+
+        // Layout Constants for Canvas
+        const originX = 50;
+        const originY = 50;
+
+        // Initialize App
+        function init() {
+            // Setup Event Listeners
+            v0Slider.addEventListener('input', updateParams);
+            angleSlider.addEventListener('input', updateParams);
+            
+            startBtn.addEventListener('click', toggleSimulation);
+            resetBtn.addEventListener('click', resetSimulation);
+
+            // Set initial state
+            updateParams();
+            resetSimulation();
+        }
+
+        function updateParams() {
+            physics.v0 = parseFloat(v0Slider.value);
+            physics.angleDeg = parseFloat(angleSlider.value);
+            
+            v0Display.textContent = physics.v0.toFixed(1);
+            angleDisplay.textContent = physics.angleDeg;
+            
+            // If simulation is not running, redraw to show new angle
+            if (!physics.isRunning && physics.time === 0) {
+                drawSimulation();
+            } else {
+                // If they change params mid-simulation, automatically reset
+                resetSimulation();
+            }
+        }
+
+        function toggleSimulation() {
+            if (physics.isRunning) {
+                // Pause
+                physics.isRunning = false;
+                startBtn.textContent = '再開';
+                startBtn.classList.replace('bg-red-600', 'bg-blue-600');
+                startBtn.classList.replace('hover:bg-red-700', 'hover:bg-blue-700');
+            } else {
+                // Start
+                physics.isRunning = true;
+                startBtn.textContent = '一時停止';
+                startBtn.classList.replace('bg-blue-600', 'bg-red-600');
+                startBtn.classList.replace('hover:bg-blue-700', 'hover:bg-red-700');
+                
+                // Lock sliders while running to prevent confusing state
+                v0Slider.disabled = true;
+                angleSlider.disabled = true;
+                
+                physics.lastTimestamp = performance.now();
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function resetSimulation() {
+            physics.isRunning = false;
+            physics.time = 0;
+            physics.nextRecordTime = 0;
+            
+            // Reset UI
+            startBtn.textContent = 'スタート';
+            startBtn.classList.replace('bg-red-600', 'bg-blue-600');
+            startBtn.classList.replace('hover:bg-red-700', 'hover:bg-blue-700');
+            
+            v0Slider.disabled = false;
+            angleSlider.disabled = false;
+            
+            dataTableBody.innerHTML = ''; // Clear table
+            updateHUD(0, physics.v0, 0);
+            
+            drawSimulation();
+        }
+
+        function addDataRow(timeStr, velStr) {
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-gray-50 border-b border-gray-100 transition-colors";
+            
+            const tdTime = document.createElement('td');
+            tdTime.className = "py-3 px-4";
+            tdTime.textContent = timeStr;
+            
+            const tdVel = document.createElement('td');
+            tdVel.className = "py-3 px-4 font-bold text-blue-600";
+            tdVel.textContent = velStr;
+            
+            tr.appendChild(tdTime);
+            tr.appendChild(tdVel);
+            dataTableBody.appendChild(tr);
+            
+            // Auto scroll to bottom of table
+            const tableContainer = dataTableBody.parentElement.parentElement;
+            tableContainer.scrollTop = tableContainer.scrollHeight;
+        }
+
+        function updateHUD(t, v, x) {
+            hudTime.textContent = t.toFixed(2);
+            hudVel.textContent = v.toFixed(2);
+            hudDist.textContent = x.toFixed(2);
+        }
+
+        function gameLoop(timestamp) {
+            if (!physics.isRunning) return;
+
+            // Calculate delta time in seconds (cap at 0.1s to prevent huge jumps if tab is inactive)
+            let dt = (timestamp - physics.lastTimestamp) / 1000;
+            if (dt > 0.1) dt = 0.1; 
+            physics.lastTimestamp = timestamp;
+
+            // Update Time
+            physics.time += dt;
+
+            // Physics Math
+            // a = g * sin(θ)
+            const angleRad = physics.angleDeg * Math.PI / 180;
+            const a = physics.g * Math.sin(angleRad);
+            
+            // v = v0 + at
+            const currentV = physics.v0 + a * physics.time;
+            
+            // x = v0*t + 1/2*a*t^2
+            const distance = physics.v0 * physics.time + 0.5 * a * physics.time * physics.time;
+
+            // Record data at exactly 0.0s, 1.0s, 2.0s, etc.
+            while (physics.time >= physics.nextRecordTime) {
+                const exactTime = physics.nextRecordTime;
+                // Calculate exact velocity at the precise integer second
+                const exactVel = physics.v0 + a * exactTime;
+                
+                addDataRow(exactTime.toFixed(1), exactVel.toFixed(2));
+                physics.nextRecordTime++;
+            }
+
+            // End simulation if ball reaches end of the 70m ramp
+            if (distance >= physics.maxDistance) {
+                physics.time = (Math.sqrt(physics.v0*physics.v0 + 2*a*physics.maxDistance) - physics.v0) / a; // Exact time at end
+                const finalV = physics.v0 + a * physics.time;
+                updateHUD(physics.time, finalV, physics.maxDistance);
+                drawSimulation(physics.maxDistance);
+                
+                // Stop running
+                physics.isRunning = false;
+                startBtn.textContent = '完了';
+                startBtn.disabled = true; // Force reset
+                startBtn.classList.replace('bg-red-600', 'bg-gray-400');
+                startBtn.classList.replace('hover:bg-red-700', 'hover:bg-gray-400');
+                
+                // Re-enable reset but leave start disabled until reset
+                setTimeout(() => { startBtn.disabled = false; }, 1000); // just to prevent glitch
+                return;
+            }
+
+            updateHUD(physics.time, currentV, distance);
+            drawSimulation(distance);
+
+            // Request next frame
+            requestAnimationFrame(gameLoop);
+        }
+
+        function drawSimulation(currentDistance = 0) {
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const angleRad = physics.angleDeg * Math.PI / 180;
+            const lengthPx = physics.maxDistance * physics.scale;
+            
+            // Calculate ramp end points based on angle
+            const endX = originX + lengthPx * Math.cos(angleRad);
+            const endY = originY + lengthPx * Math.sin(angleRad);
+            
+            // Draw background grid (optional, for visual scale)
+            ctx.strokeStyle = '#e5e7eb';
+            ctx.lineWidth = 1;
+            for(let i=0; i<canvas.width; i+=50) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke();
+            }
+            for(let i=0; i<canvas.height; i+=50) {
+                ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); ctx.stroke();
+            }
+
+            // Draw Ground Support structure (triangle)
+            ctx.fillStyle = '#cbd5e1';
+            ctx.beginPath();
+            ctx.moveTo(originX, originY);
+            ctx.lineTo(endX, endY);
+            ctx.lineTo(originX, endY);
+            ctx.closePath();
+            ctx.fill();
+            
+            ctx.strokeStyle = '#94a3b8';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw the ramp surface (thick line)
+            ctx.strokeStyle = '#475569';
+            ctx.lineCap = 'round';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(originX, originY);
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+
+            // Draw Distance Markers on the ramp (every 10 meters)
+            ctx.fillStyle = '#64748b';
+            ctx.font = '12px Inter';
+            ctx.textAlign = 'center';
+            for (let m = 0; m <= physics.maxDistance; m += 10) {
+                const px = m * physics.scale;
+                const mx = originX + px * Math.cos(angleRad);
+                const my = originY + px * Math.sin(angleRad);
+                
+                // Draw tick mark
+                ctx.strokeStyle = '#64748b';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(mx, my);
+                // Draw perpendicular tick
+                ctx.lineTo(mx - 10 * Math.sin(angleRad), my + 10 * Math.cos(angleRad));
+                ctx.stroke();
+
+                // Draw label
+                ctx.fillText(`${m}m`, mx - 20 * Math.sin(angleRad), my + 20 * Math.cos(angleRad));
+            }
+
+            // Calculate Ball Position
+            const ballPx = currentDistance * physics.scale;
+            const ballX = originX + ballPx * Math.cos(angleRad);
+            const ballY = originY + ballPx * Math.sin(angleRad);
+            const ballRadius = 15;
+
+            // Adjust ball center so it rolls *on* the surface, not through it
+            // We need to shift it up perpendicular to the ramp
+            const shiftX = -ballRadius * Math.sin(angleRad);
+            const shiftY = -ballRadius * Math.cos(angleRad);
+            const finalBallX = ballX + shiftX;
+            const finalBallY = ballY + shiftY;
+
+            // Draw Ball Shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.2)';
+            ctx.beginPath();
+            ctx.ellipse(ballX, ballY, 8, 4, angleRad, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw the Ball
+            ctx.fillStyle = '#ef4444'; // Tailwind Red-500
+            ctx.beginPath();
+            ctx.arc(finalBallX, finalBallY, ballRadius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Ball Outline
+            ctx.strokeStyle = '#b91c1c';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw a line on the ball to show rotation (if moving)
+            // circumference = 2 * PI * r. Angle rotated = distance / radius
+            const rotationAngle = (currentDistance * physics.scale) / ballRadius;
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(finalBallX, finalBallY);
+            ctx.lineTo(
+                finalBallX + ballRadius * Math.cos(rotationAngle), 
+                finalBallY + ballRadius * Math.sin(rotationAngle)
+            );
+            ctx.stroke();
+        }
+
+        // Run initialization
+        window.onload = init;
+
+    </script>
+</body>
+</html>
